@@ -1,0 +1,36 @@
+{
+    "$schema": "https://schema.management.azure.com/schemas/2015-01-01/deploymentTemplate.json#",
+    "contentVersion": "1.0.0.0",
+    "parameters": {
+        "clientAppID": {
+            "value": ""
+        },
+        "serverAppID": {
+            "value": ""
+        },
+        "tenantID": {
+            "value": ""     
+        },
+        "clientId": {
+            "value": ""     
+        },
+        "kubernetesVersion":{
+            "value": "1.13.5"
+        },
+        "nodeCount": {
+            "value": 2
+        },
+        "clusterName": {
+            "value": "aks-test"
+        },
+        "environment": {
+            "value": "test"
+        },
+        "dnsPrefix": {
+            "value": "akstest"
+        },
+        "poolName": {
+            "value": "akspool"
+        }
+
+}}
