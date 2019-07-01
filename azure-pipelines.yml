@@ -1,0 +1,99 @@
+# AKS deployment pipeline
+
+trigger:
+  branches:
+    include:
+    - master
+  paths:
+    include:
+    - aks/*
+
+variables:
+  aksTest: 'clu-test'
+  aksTestRG: 'rg-clu-test'
+  aksTestIP: 'clu-test-ip'
+
+stages:
+- stage: DeployAKSTest
+  jobs:
+  - job: 'DeployToTest'
+    pool:
+      vmImage: 'ubuntu-latest'
+    steps: 
+    # DEPLOY AKS IN TEST   
+    - task: AzureResourceGroupDeployment@2
+      inputs:
+        azureSubscription: 'YOUR SUBSCRIPTION'
+        action: 'Create Or Update Resource Group'
+        resourceGroupName: '$(aksTestRG)'
+        location: 'West Europe'
+        templateLocation: 'Linked artifact'
+        csmFile: 'aks/deploy.json'
+        csmParametersFile: 'aks/deployparams.t.json'
+        overrideParameters: '-serverAppSecret $(serverAppSecret) -clientIdsecret $(clientIdsecret) -clusterName $(aksTest)'
+        deploymentMode: 'Incremental'
+        deploymentName: 'CluTest'
+    # DEPLOY IP ADDRESS IN BACKING RESOURCE GROUP
+    - task: AzureResourceGroupDeployment@2
+      inputs:
+        azureSubscription: 'Microsoft Azure Sponsorship(6c61016c-abcc-4159-9fa5-0410b3c56d35)'
+        action: 'Create Or Update Resource Group'
+        resourceGroupName: 'MC_rg-clu-test_clu-test_westeurope'
+        location: 'West Europe'
+        templateLocation: 'Linked artifact'
+        csmFile: 'ip/deploy.json'
+        overrideParameters: '-ipName $(aksTestIP)'
+        deploymentMode: 'Incremental'
+        deploymentName: 'aksTestIp'
+        deploymentOutputs: 'armoutputs'
+    - task: Bash@3
+      inputs:
+        targetType: 'inline'
+        script: |
+          echo "##vso[task.setvariable variable=test-ip;]$(echo '$(armoutputs)' | jq .ipaddress.value -r)"
+    
+    # INSTALL KUBECTL
+    - task: KubectlInstaller@0
+      inputs:
+        kubectlVersion: '1.13.5'
+
+    #INSTALL HELM
+    - task: HelmInstaller@1
+      inputs:
+        helmVersionToInstall: '2.14.1'
+
+    # GET CREDS TO K8S CLUSTER WITH ADMIN (required for AAD integrated cluster)
+    - task: AzureCLI@1
+      inputs:
+        azureSubscription: 'Microsoft Azure Sponsorship(6c61016c-abcc-4159-9fa5-0410b3c56d35)'
+        scriptLocation: 'inlineScript'
+        inlineScript: 'az aks get-credentials -g $(aksTestRG) -n $(aksTest) --admin'
+
+    # INSTALL TILLER
+    - task: Bash@3
+      inputs:
+        filePath: 'tiller/tillerconfig.sh'
+        workingDirectory: 'tiller/'
+
+    # DEPLOY EXTERNAL INGRESS
+    - task: HelmDeploy@0
+      inputs:
+        connectionType: 'None'
+        namespace: 'kube-system'
+        command: 'upgrade'
+        chartType: 'FilePath'
+        chartPath: 'traefik-ext/.'
+        releaseName: 'traefik-ext'
+        overrideValues: 'loadBalancerIP=$(test-ip)'
+        valueFile: 'traefik-ext/values.yaml'
+
+    # DEPLOY INTERNAL INGRESS (same subnet for now)
+    - task: HelmDeploy@0
+      inputs:
+        connectionType: 'None'
+        namespace: 'kube-system'
+        command: 'upgrade'
+        chartType: 'FilePath'
+        chartPath: 'traefik-int/.'
+        releaseName: 'traefik-int'
+        valueFile: 'traefik-int/values.yaml'
