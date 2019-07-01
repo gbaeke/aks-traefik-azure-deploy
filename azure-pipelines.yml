@@ -86,14 +86,3 @@ stages:
         releaseName: 'traefik-ext'
         overrideValues: 'loadBalancerIP=$(test-ip)'
         valueFile: 'traefik-ext/values.yaml'
-
-    # DEPLOY INTERNAL INGRESS (same subnet for now)
-    - task: HelmDeploy@0
-      inputs:
-        connectionType: 'None'
-        namespace: 'kube-system'
-        command: 'upgrade'
-        chartType: 'FilePath'
-        chartPath: 'traefik-int/.'
-        releaseName: 'traefik-int'
-        valueFile: 'traefik-int/values.yaml'
