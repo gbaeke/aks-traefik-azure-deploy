@@ -1,0 +1,143 @@
+{
+    "$schema": "http://schema.management.azure.com/schemas/2015-01-01/deploymentTemplate.json#",
+    "contentVersion": "1.0.0.0",
+    "parameters": {
+      "clientId": {
+        "type": "string",
+        "metadata": {
+          "description": "Service Principal Client ID"
+        }
+      },
+      "clientIdsecret": {
+        "type": "securestring",
+        "metadata": {
+          "description": "Service Principal Client Secret"
+        }
+      },
+      "clusterName": {
+        "type": "string",
+        "metadata": {
+          "description": "Name of the cluster e.g. prd-kub"
+        }
+      },
+      "kubernetesVersion": {
+        "type": "string",
+        "metadata": {
+          "description": "Version number of Kubernetes e.g. 1.8.7"
+        }
+      },
+      "environment": {
+        "type": "string",
+        "metadata": {
+          "description": "Environment for the cluster e.g. production"
+        }
+      },
+      "dnsPrefix": {
+        "type": "string",
+        "metadata": {
+          "description": "DNS prefix for the cluster e.g. prd"
+        }
+      },
+      "poolName": {
+        "type": "string",
+        "metadata": {
+          "description": "Name of server pool for the cluster e.g. prdpool"
+        }
+      },
+      "nodeCount": {
+        "type": "int",
+        "metadata": {
+          "description": "Number of nodes"
+        }
+        
+      }
+    },
+    "variables": {},
+    "resources": [
+      {
+        "type": "Microsoft.OperationalInsights/workspaces",
+        "name": "[parameters('clusterName')]",
+        "apiVersion": "2017-03-15-preview",
+        "location": "[resourceGroup().location]",
+        "properties": {
+          "sku": {
+            "Name": "Standalone"
+          },
+          "features": {
+            "searchVersion": 1
+          }
+        },
+        "resources": [
+          {
+            "name": "[concat('ContainerInsights', '(',parameters('clusterName'),')')]",
+            "type": "Microsoft.OperationsManagement/solutions",
+            "apiVersion": "2015-11-01-preview",
+            "location": "[resourceGroup().location]",
+            "dependsOn": [
+              "[concat('Microsoft.OperationalInsights/workspaces/', parameters('clusterName'))]"
+            ],
+            "plan": {
+              "name": "[concat('ContainerInsights', '(',parameters('clusterName'),')')]",
+              "product": "[concat('OMSGallery/', 'ContainerInsights')]",
+              "publisher": "Microsoft",
+              "promotionCode": ""
+            },
+            "properties": {
+              "workspaceResourceId": "[resourceId('Microsoft.OperationalInsights/workspaces/',parameters('clusterName'))]"
+            }
+          }
+        ]
+      },
+      {
+        "name": "[parameters('clusterName')]",
+        "type": "Microsoft.ContainerService/managedClusters",
+        "apiVersion": "2019-06-01",
+        "location": "[resourceGroup().location]",
+        "tags": {
+          "environment": "[parameters('environment')]"
+        },
+        "dependsOn": [
+          "[concat('Microsoft.OperationalInsights/workspaces/', parameters('clusterName'))]"
+        ],
+        "properties": {
+          "kubernetesVersion": "[parameters('kubernetesVersion')]",
+          "dnsPrefix": "[parameters('dnsPrefix')]",
+          "agentPoolProfiles": [
+            {
+              "name": "[parameters('poolName')]",
+              "count": "[parameters('nodeCount')]",
+              "vmSize": "Standard_B2ms",
+              "dnsPrefix": "[parameters('poolName')]"
+            }
+          ],
+          "linuxProfile": {
+            "adminUsername": "cluadmin",
+            "ssh": {
+              "publicKeys": [
+                {
+                  "keyData": "ssh public key"
+                }
+              ]
+            }
+          },
+          "servicePrincipalProfile": {
+            "clientId": "[parameters('clientId')]",
+            "secret": "[parameters('clientIdsecret')]"
+          },
+          "addonProfiles": {
+            "omsagent": {
+              "enabled": true,
+              "config": {
+                "logAnalyticsWorkspaceResourceID": "[resourceId('Microsoft.OperationalInsights/workspaces/',parameters('clusterName'))]"
+              }
+            }
+          },
+          "enableRBAC": true,
+          "networkProfile": {
+            "networkPlugin": "azure"
+          }
+        }
+      }
+    ],
+    "outputs": {}
+  }

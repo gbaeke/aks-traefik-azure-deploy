@@ -1,0 +1,127 @@
+# AKS deployment pipeline
+
+trigger:
+  branches:
+    include:
+    - master
+  paths:
+    include:
+    - aks/*
+
+variables:
+  aksTest: 'clu-demo'
+  aksTestRG: 'rg-clu-demo'
+  aksTestIP: 'clu-demo-ip'
+
+stages:
+- stage: DeployAKS
+  jobs:
+  - job: 'DeployAKSDemo'
+    pool:
+      vmImage: 'ubuntu-latest'
+    steps: 
+    # DEPLOY AKS IN TEST   
+    - task: AzureResourceGroupDeployment@2
+      inputs:
+        azureSubscription: 'AzureMPN'
+        action: 'Create Or Update Resource Group'
+        resourceGroupName: '$(aksTestRG)'
+        location: 'West Europe'
+        templateLocation: 'Linked artifact'
+        csmFile: 'aks/deploy.json'
+        csmParametersFile: 'aks/deployparams.t.json'
+        # overrideParameters: '-serverAppSecret $(serverAppSecret) -clientIdsecret $(clientIdsecret) -clusterName $(aksTest)'
+        overrideParameters: '-clusterName $(aksTest) -clientIdsecret $(clientIdsecret)'
+        deploymentMode: 'Incremental'
+        deploymentName: 'aks-deploy'
+    # DEPLOY IP ADDRESS IN BACKING RESOURCE GROUP
+    - task: AzureResourceGroupDeployment@2
+      inputs:
+        azureSubscription: 'AzureMPN'
+        action: 'Create Or Update Resource Group'
+        resourceGroupName: 'MC_rg-clu-demo_clu-demo_westeurope'
+        location: 'West Europe'
+        templateLocation: 'Linked artifact'
+        csmFile: 'ip/deploy.json'
+        overrideParameters: '-ipName $(aksTestIP)'
+        deploymentMode: 'Incremental'
+        deploymentName: 'aksTestIp'
+        deploymentOutputs: 'armoutputs'
+    - task: Bash@3
+      name: GetIP
+      inputs:
+        targetType: 'inline'
+        script: |
+          echo "##vso[task.setvariable variable=test-ip;]$(echo '$(armoutputs)' | jq .ipaddress.value -r)"
+    
+    # INSTALL KUBECTL
+    - task: KubectlInstaller@0
+      name: InstallKubectl
+      inputs:
+        kubectlVersion: '1.13.12'
+
+    #INSTALL HELM v3
+    - task: HelmInstaller@1
+      inputs:
+        helmVersionToInstall: 'latest'
+
+    # GET CREDS TO K8S CLUSTER WITH ADMIN (required for AAD integrated cluster and Helm)
+    - task: AzureCLI@1
+      inputs:
+        azureSubscription: 'AzureMPN'
+        scriptLocation: 'inlineScript'
+        inlineScript: |
+          az aks get-credentials -g $(aksTestRG) -n $(aksTest) --admin
+          helm repo add stable https://kubernetes-charts.storage.googleapis.com/
+          helm repo add fluxcd https://charts.fluxcd.io
+          helm repo update
+          kubectl apply -f https://raw.githubusercontent.com/fluxcd/helm-operator/master/deploy/flux-helm-release-crd.yaml
+          
+    - task: Kubernetes@1
+      inputs:
+        connectionType: 'None'
+        command: 'apply'
+        useConfigurationFile: true
+        configurationType: 'inline'
+        inline: |
+          apiVersion: v1
+          kind: Namespace
+          metadata:
+            name: fluxcd
+        secretType: 'dockerRegistry'
+        containerRegistryType: 'Azure Container Registry'
+
+    # DEPLOY NGINX INGRESS
+    - task: HelmDeploy@0
+      inputs:
+        connectionType: 'None'
+        namespace: 'kube-system'
+        command: 'upgrade'
+        chartType: 'Name'
+        chartName: 'stable/nginx-ingress'
+        releaseName: 'nginx'
+        overrideValues: 'controller.service.loadBalancerIP=$(test-ip),controller.publishService.enabled=true'
+        
+
+    # DEPLOY EXTERNAL DNS
+    - task: HelmDeploy@0
+      inputs:
+        connectionType: 'None'
+        namespace: 'kube-system'
+        command: 'upgrade'
+        chartType: 'Name'
+        chartName: 'stable/external-dns'
+        releaseName: 'externaldns'
+        overrideValues: 'cloudflare.apiToken=$(CFAPIToken)'
+        valueFile: 'externaldns/values.yaml'
+
+     # DEPLOY HELM OPERATOR
+    - task: HelmDeploy@0
+      inputs:
+        connectionType: 'None'
+        namespace: 'kube-system'
+        command: 'upgrade'
+        chartType: 'Name'
+        chartName: 'fluxcd/helm-operator'
+        releaseName: 'helm-operator'
+        arguments: '--namespace fluxcd'
