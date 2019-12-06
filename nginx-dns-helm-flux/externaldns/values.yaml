@@ -7,11 +7,11 @@ logLevel: debug
 
 cloudflare:
   apiToken: CFAPIToken
-  email: your email
+  email: geert@baeke.info
   proxied: false
 
 interval: "1m"
 
 policy: sync # or upsert-only
 
-domainFilters: [ 'your domain' ]
+domainFilters: [ 'baeke.info' ]

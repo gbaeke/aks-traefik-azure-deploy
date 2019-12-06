@@ -3,7 +3,7 @@
     "contentVersion": "1.0.0.0",
     "parameters": {
         "clientId": {
-            "value": "client id of sp"     
+            "value": "141711f0-4fc7-466e-9c8c-6c7357216939"     
         },
         "kubernetesVersion":{
             "value": "1.13.12"

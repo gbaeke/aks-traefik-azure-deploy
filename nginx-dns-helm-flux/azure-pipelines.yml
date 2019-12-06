@@ -12,6 +12,7 @@ variables:
   aksTest: 'clu-demo'
   aksTestRG: 'rg-clu-demo'
   aksTestIP: 'clu-demo-ip'
+  gitURL: 'gbaeke/demo-clu-flux'
 
 stages:
 - stage: DeployAKS
@@ -93,6 +94,8 @@ stages:
 
     # DEPLOY NGINX INGRESS
     - task: HelmDeploy@0
+      name: nginx
+      displayName: Install nginx Ingress Controller
       inputs:
         connectionType: 'None'
         namespace: 'kube-system'
@@ -100,11 +103,14 @@ stages:
         chartType: 'Name'
         chartName: 'stable/nginx-ingress'
         releaseName: 'nginx'
-        overrideValues: 'controller.service.loadBalancerIP=$(test-ip),controller.publishService.enabled=true'
+        overrideValues: 'controller.service.loadBalancerIP=$(test-ip),controller.publishService.enabled=true,controller.metrics.enabled=true'
+        arguments: '--timeout 10m0s'
         
 
     # DEPLOY EXTERNAL DNS
     - task: HelmDeploy@0
+      name: ExternalDNS
+      displayName: Install External DNS with CloudFlare baeke.info
       inputs:
         connectionType: 'None'
         namespace: 'kube-system'
@@ -117,6 +123,8 @@ stages:
 
      # DEPLOY HELM OPERATOR
     - task: HelmDeploy@0
+      name: HelmOp
+      displayName: Install Flux CD Helm Operator
       inputs:
         connectionType: 'None'
         namespace: 'kube-system'
@@ -124,4 +132,17 @@ stages:
         chartType: 'Name'
         chartName: 'fluxcd/helm-operator'
         releaseName: 'helm-operator'
+        overrideValues: 'extraEnvs[0].name=HELM_VERSION,extraEnvs[0].value=v3,image.repository=docker.io/fluxcd/helm-operator-prerelease,image.tag=helm-v3-dev-53b6a21d'
         arguments: '--namespace fluxcd'
+
+    - task: HelmDeploy@0
+      name: FluxCD
+      displayName: Install Flux CD
+      inputs:
+        connectionType: 'None'
+        namespace: 'fluxcd'
+        command: 'upgrade'
+        chartType: 'Name'
+        chartName: 'fluxcd/flux'
+        releaseName: 'flux'
+        overrideValues: 'git.url=git@github.com:$(gitURL),git.pollInterval=1m'
