@@ -6,7 +6,7 @@
             "value": "141711f0-4fc7-466e-9c8c-6c7357216939"     
         },
         "kubernetesVersion":{
-            "value": "1.13.12"
+            "value": "1.14.8"
         },
         "nodeCount": {
             "value": 2

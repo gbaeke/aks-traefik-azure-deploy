@@ -91,7 +91,7 @@
       {
         "name": "[parameters('clusterName')]",
         "type": "Microsoft.ContainerService/managedClusters",
-        "apiVersion": "2019-06-01",
+        "apiVersion": "2019-08-01",
         "location": "[resourceGroup().location]",
         "tags": {
           "environment": "[parameters('environment')]"
@@ -107,7 +107,12 @@
               "name": "[parameters('poolName')]",
               "count": "[parameters('nodeCount')]",
               "vmSize": "Standard_B2ms",
-              "dnsPrefix": "[parameters('poolName')]"
+              "dnsPrefix": "[parameters('poolName')]",
+              "enableAutoScaling":true,
+              "minCount":2,
+              "maxCount":2,
+              "type":"VirtualMachineScaleSets",
+              "availabilityZones":["1","2","3"]
             }
           ],
           "linuxProfile": {
@@ -134,7 +139,8 @@
           },
           "enableRBAC": true,
           "networkProfile": {
-            "networkPlugin": "azure"
+            "networkPlugin": "azure",
+            "loadBalancerSku":"standard"
           }
         }
       }
